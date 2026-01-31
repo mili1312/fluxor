@@ -808,33 +808,105 @@ def under_construction_layout():
             "color": "white",
             "fontFamily": "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
             "textAlign": "center",
-
-            # 🌌 COSMIC BACKGROUND (pure CSS)
-            "background":
-                """
-                radial-gradient(1px 1px at 20% 30%, #ffffff88 50%, transparent 51%),
-                radial-gradient(1px 1px at 70% 80%, #ffffff66 50%, transparent 51%),
-                radial-gradient(1px 1px at 40% 60%, #ffffff55 50%, transparent 51%),
-                radial-gradient(1px 1px at 90% 20%, #ffffff77 50%, transparent 51%),
-                radial-gradient(2px 2px at 10% 90%, #ffffff44 50%, transparent 51%),
-                radial-gradient(1200px 700px at 50% 20%, rgba(80,120,255,0.18), rgba(0,0,0,0)),
-                radial-gradient(1000px 600px at 50% 80%, rgba(60,90,255,0.12), rgba(0,0,0,0)),
-                linear-gradient(180deg, #040814, #02040a)
-                """,
+            "position": "relative",
+            "overflow": "hidden",
+            "background": "linear-gradient(180deg, #040814, #02040a)",
         },
         children=[
-            html.Div(
-                style={
-                    "maxWidth": "760px",
-                    "padding": "36px 32px",
-                    "borderRadius": "22px",
+            # ✅ CSS animations (inline, no assets)
+            html.Style(
+                """
+                @keyframes drift {
+                  0%   { transform: translate3d(0,0,0) scale(1); }
+                  100% { transform: translate3d(-4%, -6%, 0) scale(1.02); }
+                }
 
-                    # ✨ glass / neon frame
-                    "background": "rgba(10,15,30,0.55)",
-                    "border": "1px solid rgba(120,160,255,0.35)",
-                    "boxShadow": "0 0 30px rgba(80,120,255,0.25)",
-                    "backdropFilter": "blur(10px)",
-                },
+                @keyframes twinkle {
+                  0%, 100% { opacity: 0.25; }
+                  50%      { opacity: 0.85; }
+                }
+
+                @keyframes pulseBorder {
+                  0%, 100% {
+                    box-shadow: 0 0 18px rgba(80,120,255,0.22), 0 0 40px rgba(80,120,255,0.12);
+                    border-color: rgba(120,160,255,0.35);
+                  }
+                  50% {
+                    box-shadow: 0 0 28px rgba(120,180,255,0.32), 0 0 70px rgba(120,180,255,0.18);
+                    border-color: rgba(160,210,255,0.55);
+                  }
+                }
+
+                .space-layer {
+                  position: absolute;
+                  inset: -20%;
+                  pointer-events: none;
+                  z-index: 0;
+                  animation: drift 18s linear infinite alternate;
+                }
+
+                /* Stars layer 1 */
+                .stars1 {
+                  background:
+                    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.70) 50%, transparent 51%),
+                    radial-gradient(1px 1px at 70% 80%, rgba(255,255,255,0.55) 50%, transparent 51%),
+                    radial-gradient(1px 1px at 40% 60%, rgba(255,255,255,0.45) 50%, transparent 51%),
+                    radial-gradient(1px 1px at 90% 20%, rgba(255,255,255,0.60) 50%, transparent 51%),
+                    radial-gradient(2px 2px at 10% 90%, rgba(255,255,255,0.35) 50%, transparent 51%),
+                    radial-gradient(1200px 700px at 50% 20%, rgba(80,120,255,0.18), rgba(0,0,0,0)),
+                    radial-gradient(1000px 600px at 50% 80%, rgba(60,90,255,0.12), rgba(0,0,0,0));
+                  filter: blur(0px);
+                  opacity: 0.75;
+                }
+
+                /* Stars layer 2 (twinkle) */
+                .stars2 {
+                  background:
+                    radial-gradient(1px 1px at 15% 75%, rgba(255,255,255,0.60) 50%, transparent 51%),
+                    radial-gradient(1px 1px at 55% 25%, rgba(255,255,255,0.45) 50%, transparent 51%),
+                    radial-gradient(1px 1px at 85% 55%, rgba(255,255,255,0.50) 50%, transparent 51%),
+                    radial-gradient(2px 2px at 35% 15%, rgba(255,255,255,0.35) 50%, transparent 51%),
+                    radial-gradient(2px 2px at 75% 90%, rgba(255,255,255,0.30) 50%, transparent 51%);
+                  opacity: 0.55;
+                  animation: twinkle 3.6s ease-in-out infinite;
+                }
+
+                .center-card {
+                  position: relative;
+                  z-index: 2;
+                  max-width: 760px;
+                  padding: 36px 32px;
+                  border-radius: 22px;
+                  background: rgba(10,15,30,0.55);
+                  border: 1px solid rgba(120,160,255,0.35);
+                  backdrop-filter: blur(10px);
+                  animation: pulseBorder 3.2s ease-in-out infinite;
+                }
+
+                .subtitle {
+                  font-size: 16px;
+                  opacity: 0.9;
+                  line-height: 1.55;
+                }
+
+                .accent {
+                  color: #9fb7ff;
+                  font-weight: 900;
+                }
+
+                @media (max-width: 520px) {
+                  .center-card { padding: 28px 18px; }
+                }
+                """
+            ),
+
+            # 🌌 animated background layers
+            html.Div(className="space-layer stars1"),
+            html.Div(className="space-layer stars2"),
+
+            # ✅ content card
+            html.Div(
+                className="center-card",
                 children=[
                     html.H1(
                         "Fluxor",
@@ -844,16 +916,17 @@ def under_construction_layout():
                             "letterSpacing": "0.4px",
                         },
                     ),
-                    html.P(
+                    html.Div(
                         "Remember, the crypto market can be highly volatile and unpredictable.",
-                        style={"fontSize": "16px", "opacity": 0.9},
+                        className="subtitle",
                     ),
-                    html.P(
+                    html.Div(
                         [
-                            html.Span("Educate yourself", style={"color": "#9fb7ff", "fontWeight": 900}),
+                            html.Span("Educate yourself", className="accent"),
                             " so you can make informed decisions.",
                         ],
-                        style={"fontSize": "16px", "marginTop": "8px"},
+                        className="subtitle",
+                        style={"marginTop": "10px"},
                     ),
                     html.Div(style={"height": "18px"}),
                     html.Div(
@@ -865,9 +938,10 @@ def under_construction_layout():
                         },
                     ),
                 ],
-            )
+            ),
         ],
     )
+
 
 
 
@@ -2242,6 +2316,7 @@ if MAINTENANCE:
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8050)
+
 
 
 
