@@ -1,0 +1,10 @@
+dash
+gunicorn
+pandas
+numpy
+requests
+ccxt
+plotly
+scikit-learn
+psycopg2-binary
+bcrypt
