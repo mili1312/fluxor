@@ -797,6 +797,8 @@ server = app.server
 app.title = "Fluxor"
 
 
+from dash import dcc, html
+
 def under_construction_layout():
     css = """
 <style>
@@ -899,14 +901,14 @@ def under_construction_layout():
             "background": "linear-gradient(180deg, #040814, #02040a)",
         },
         children=[
-            # ✅ CSS animations (inline, no assets) — FIXED
+            # Inject CSS safely (Dash-compatible)
             dcc.Markdown(css, dangerously_allow_html=True),
 
-            # 🌌 animated background layers
+            # Background layers
             html.Div(className="space-layer stars1"),
             html.Div(className="space-layer stars2"),
 
-            # ✅ content card
+            # Center card
             html.Div(
                 className="center-card",
                 children=[
@@ -943,6 +945,7 @@ def under_construction_layout():
             ),
         ],
     )
+
 
 
 
@@ -2317,6 +2320,7 @@ if MAINTENANCE:
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8050)
+
 
 
 
