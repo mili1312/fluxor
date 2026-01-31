@@ -804,24 +804,71 @@ def under_construction_layout():
             "display": "flex",
             "alignItems": "center",
             "justifyContent": "center",
-            "background": "#0b0f14",
-            "color": "white",
-            "fontFamily": "Arial",
-            "textAlign": "center",
             "padding": "40px",
+            "color": "white",
+            "fontFamily": "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
+            "textAlign": "center",
+
+            # 🌌 COSMIC BACKGROUND (pure CSS)
+            "background":
+                """
+                radial-gradient(1px 1px at 20% 30%, #ffffff88 50%, transparent 51%),
+                radial-gradient(1px 1px at 70% 80%, #ffffff66 50%, transparent 51%),
+                radial-gradient(1px 1px at 40% 60%, #ffffff55 50%, transparent 51%),
+                radial-gradient(1px 1px at 90% 20%, #ffffff77 50%, transparent 51%),
+                radial-gradient(2px 2px at 10% 90%, #ffffff44 50%, transparent 51%),
+                radial-gradient(1200px 700px at 50% 20%, rgba(80,120,255,0.18), rgba(0,0,0,0)),
+                radial-gradient(1000px 600px at 50% 80%, rgba(60,90,255,0.12), rgba(0,0,0,0)),
+                linear-gradient(180deg, #040814, #02040a)
+                """,
         },
         children=[
             html.Div(
-                style={"maxWidth": "720px"},
+                style={
+                    "maxWidth": "760px",
+                    "padding": "36px 32px",
+                    "borderRadius": "22px",
+
+                    # ✨ glass / neon frame
+                    "background": "rgba(10,15,30,0.55)",
+                    "border": "1px solid rgba(120,160,255,0.35)",
+                    "boxShadow": "0 0 30px rgba(80,120,255,0.25)",
+                    "backdropFilter": "blur(10px)",
+                },
                 children=[
-                    html.Img(src="/assets/fluxor.png", style={"width": "120px", "marginBottom": "18px"}),
-                    html.H1("Fluxor", style={"margin": "0 0 10px 0"}),
-                    html.H3("Under Construction", style={"margin": "0 0 14px 0", "opacity": "0.9"}),
-                    html.P("Το dashboard ετοιμάζεται. Έρχεται σύντομα.", style={"opacity": "0.8"}),
+                    html.H1(
+                        "Fluxor",
+                        style={
+                            "margin": "0 0 14px 0",
+                            "fontWeight": 900,
+                            "letterSpacing": "0.4px",
+                        },
+                    ),
+                    html.P(
+                        "Remember, the crypto market can be highly volatile and unpredictable.",
+                        style={"fontSize": "16px", "opacity": 0.9},
+                    ),
+                    html.P(
+                        [
+                            html.Span("Educate yourself", style={"color": "#9fb7ff", "fontWeight": 900}),
+                            " so you can make informed decisions.",
+                        ],
+                        style={"fontSize": "16px", "marginTop": "8px"},
+                    ),
+                    html.Div(style={"height": "18px"}),
+                    html.Div(
+                        "Under Construction",
+                        style={
+                            "fontSize": "14px",
+                            "opacity": 0.75,
+                            "letterSpacing": "1px",
+                        },
+                    ),
                 ],
             )
         ],
     )
+
 
 
 # FIX #2: do NOT leave an empty else; app.index_string is safe to set always
@@ -2195,6 +2242,7 @@ if MAINTENANCE:
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8050)
+
 
 
 
