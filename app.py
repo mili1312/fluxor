@@ -12,6 +12,8 @@ import ccxt
 import pandas as pd
 import numpy as np
 
+
+MAINTENANCE = os.getenv("MAINTENANCE_MODE", "1") == "1"
 #authentication (login/register)
 #favorites ανά χρήστη (από DB)
 #διαγράμματα Plotly (πιθανότατα price/indicators/σήματα)
@@ -74,7 +76,10 @@ FAV_POS_FILE = ".fav_positions.json"
 
 
 # Exchange
-exchange = ccxt.binance({"enableRateLimit": True})
+# Exchange (do NOT init in maintenance)
+exchange = None
+if not MAINTENANCE:
+    exchange = ccxt.binance({"enableRateLimit": True})
 
 
 
@@ -147,6 +152,8 @@ def pick_display_name(symbol: str) -> str:
 # όλα τα διαθέσιμα markets από το exchange (μέσω ccxt) και τα μετατρέπει σε δομές δεδομένων που είναι εύχρηστες για το UI
 
 def load_markets_assets() -> Tuple[dict, Set[str], Dict[str, Set[str]]]:
+    if MAINTENANCE or exchange is None:
+        return {}, set(), {}
     markets = exchange.load_markets()
     base_assets: Set[str] = set()
     base_to_quotes: Dict[str, Set[str]] = {}
@@ -166,7 +173,13 @@ def load_markets_assets() -> Tuple[dict, Set[str], Dict[str, Set[str]]]:
     return markets, base_assets, base_to_quotes
 
 
-MARKETS, BASE_ASSETS, BASE_TO_QUOTES = load_markets_assets()
+MARKETS, BASE_ASSETS, BASE_TO_QUOTES = {}, set(), {}
+BASE_OPTIONS = []
+
+if not MAINTENANCE:
+    MARKETS, BASE_ASSETS, BASE_TO_QUOTES = load_markets_assets()
+    BASE_OPTIONS = build_base_options()
+
 
 #μετατρέπει τα raw market δεδομένα σε έτοιμες επιλογές UI
 
@@ -181,7 +194,7 @@ def build_base_options() -> List[dict]:
     return out
 
 
-BASE_OPTIONS = build_base_options()
+
 DEFAULT_BASE = "BTC" if "BTC" in BASE_TO_QUOTES else BASE_OPTIONS[0]["value"]
 DEFAULT_QUOTE = "USDT" if "USDT" in BASE_TO_QUOTES.get(DEFAULT_BASE, set()) else sorted(list(BASE_TO_QUOTES[DEFAULT_BASE]))[0]
 
@@ -825,7 +838,7 @@ app.title = "Fluxor"
 
 #Όσο MAINTENANCE_MODE=1, θα δείχνει μόνο αυτή τη σελίδα.
 
-MAINTENANCE = os.getenv("MAINTENANCE_MODE", "1") == "1"
+
 
 def under_construction_layout():
     return html.Div(
@@ -855,11 +868,7 @@ def under_construction_layout():
 
 if MAINTENANCE:
     app.layout = under_construction_layout()
-
-
-
-
-
+else:
 
 app.index_string = """
 <!DOCTYPE html>
@@ -2381,6 +2390,7 @@ def _cleanup():
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8050)
+
 
 
 
