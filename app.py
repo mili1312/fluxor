@@ -799,89 +799,102 @@ app.title = "Fluxor"
 
 from dash import dcc, html
 
+
+
 def under_construction_layout():
     css = """
 <style>
 @keyframes drift {
-  0%   { transform: translate3d(0,0,0) scale(1); }
-  100% { transform: translate3d(-4%, -6%, 0) scale(1.02); }
+  0%   { transform: translate3d(0,0,0); }
+  100% { transform: translate3d(-3%, -5%, 0); }
 }
 
 @keyframes twinkle {
-  0%, 100% { opacity: 0.25; }
-  50%      { opacity: 0.85; }
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.9; }
 }
 
 @keyframes pulseBorder {
   0%, 100% {
-    box-shadow: 0 0 18px rgba(80,120,255,0.22), 0 0 40px rgba(80,120,255,0.12);
-    border-color: rgba(120,160,255,0.35);
+    box-shadow:
+      0 0 25px rgba(120,160,255,0.25),
+      0 0 80px rgba(80,120,255,0.18);
+    border-color: rgba(140,180,255,0.45);
   }
   50% {
-    box-shadow: 0 0 28px rgba(120,180,255,0.32), 0 0 70px rgba(120,180,255,0.18);
-    border-color: rgba(160,210,255,0.55);
+    box-shadow:
+      0 0 45px rgba(160,200,255,0.35),
+      0 0 120px rgba(120,160,255,0.25);
+    border-color: rgba(180,220,255,0.7);
   }
 }
 
 .space-layer {
   position: absolute;
-  inset: -20%;
+  inset: -25%;
   pointer-events: none;
   z-index: 0;
-  animation: drift 18s linear infinite alternate;
+  animation: drift 22s linear infinite alternate;
 }
 
-/* Stars layer 1 */
+/* Dense star field */
 .stars1 {
   background:
-    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.70) 50%, transparent 51%),
-    radial-gradient(1px 1px at 70% 80%, rgba(255,255,255,0.55) 50%, transparent 51%),
-    radial-gradient(1px 1px at 40% 60%, rgba(255,255,255,0.45) 50%, transparent 51%),
-    radial-gradient(1px 1px at 90% 20%, rgba(255,255,255,0.60) 50%, transparent 51%),
-    radial-gradient(2px 2px at 10% 90%, rgba(255,255,255,0.35) 50%, transparent 51%),
-    radial-gradient(1200px 700px at 50% 20%, rgba(80,120,255,0.18), rgba(0,0,0,0)),
-    radial-gradient(1000px 600px at 50% 80%, rgba(60,90,255,0.12), rgba(0,0,0,0));
-  filter: blur(0px);
-  opacity: 0.75;
+    radial-gradient(1px 1px at 10% 20%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 30% 80%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 50% 40%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 70% 60%, #fff 50%, transparent 51%),
+    radial-gradient(1px 1px at 85% 30%, #fff 50%, transparent 51%),
+    radial-gradient(2px 2px at 20% 70%, rgba(255,255,255,0.8) 50%, transparent 51%),
+    radial-gradient(2px 2px at 60% 10%, rgba(255,255,255,0.6) 50%, transparent 51%),
+    radial-gradient(1400px 800px at 50% 30%, rgba(80,120,255,0.22), transparent),
+    radial-gradient(1200px 700px at 50% 80%, rgba(40,70,200,0.18), transparent);
+  opacity: 0.8;
 }
 
-/* Stars layer 2 (twinkle) */
+/* Twinkling stars */
 .stars2 {
   background:
-    radial-gradient(1px 1px at 15% 75%, rgba(255,255,255,0.60) 50%, transparent 51%),
-    radial-gradient(1px 1px at 55% 25%, rgba(255,255,255,0.45) 50%, transparent 51%),
-    radial-gradient(1px 1px at 85% 55%, rgba(255,255,255,0.50) 50%, transparent 51%),
-    radial-gradient(2px 2px at 35% 15%, rgba(255,255,255,0.35) 50%, transparent 51%),
-    radial-gradient(2px 2px at 75% 90%, rgba(255,255,255,0.30) 50%, transparent 51%);
-  opacity: 0.55;
-  animation: twinkle 3.6s ease-in-out infinite;
+    radial-gradient(1px 1px at 15% 75%, rgba(255,255,255,0.8) 50%, transparent 51%),
+    radial-gradient(1px 1px at 45% 25%, rgba(255,255,255,0.7) 50%, transparent 51%),
+    radial-gradient(1px 1px at 75% 55%, rgba(255,255,255,0.6) 50%, transparent 51%),
+    radial-gradient(2px 2px at 35% 15%, rgba(255,255,255,0.5) 50%, transparent 51%);
+  animation: twinkle 4s ease-in-out infinite;
+}
+
+/* Vignette */
+.vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 40%, rgba(0,0,0,0.65) 100%);
+  z-index: 1;
 }
 
 .center-card {
   position: relative;
   z-index: 2;
-  max-width: 760px;
-  padding: 36px 32px;
-  border-radius: 22px;
-  background: rgba(10,15,30,0.55);
-  border: 1px solid rgba(120,160,255,0.35);
-  backdrop-filter: blur(10px);
-  animation: pulseBorder 3.2s ease-in-out infinite;
+  max-width: 720px;
+  padding: 42px 36px;
+  border-radius: 26px;
+  background: rgba(12,18,40,0.55);
+  border: 1px solid rgba(150,190,255,0.45);
+  backdrop-filter: blur(14px);
+  animation: pulseBorder 3.5s ease-in-out infinite;
 }
 
 .subtitle {
   font-size: 16px;
-  opacity: 0.9;
-  line-height: 1.55;
+  opacity: 0.92;
+  line-height: 1.6;
 }
 
 .accent {
-  color: #9fb7ff;
+  color: #b6c9ff;
   font-weight: 900;
 }
 
 @media (max-width: 520px) {
-  .center-card { padding: 28px 18px; }
+  .center-card { padding: 30px 20px; }
 }
 </style>
 """
@@ -892,32 +905,29 @@ def under_construction_layout():
             "display": "flex",
             "alignItems": "center",
             "justifyContent": "center",
-            "padding": "40px",
             "color": "white",
             "fontFamily": "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial",
             "textAlign": "center",
             "position": "relative",
             "overflow": "hidden",
-            "background": "linear-gradient(180deg, #040814, #02040a)",
+            "background": "linear-gradient(180deg, #03060f, #02030a)",
         },
         children=[
-            # Inject CSS safely (Dash-compatible)
             dcc.Markdown(css, dangerously_allow_html=True),
 
-            # Background layers
             html.Div(className="space-layer stars1"),
             html.Div(className="space-layer stars2"),
+            html.Div(className="vignette"),
 
-            # Center card
             html.Div(
                 className="center-card",
                 children=[
                     html.H1(
                         "Fluxor",
                         style={
-                            "margin": "0 0 14px 0",
+                            "margin": "0 0 16px 0",
                             "fontWeight": 900,
-                            "letterSpacing": "0.4px",
+                            "letterSpacing": "0.6px",
                         },
                     ),
                     html.Div(
@@ -930,15 +940,15 @@ def under_construction_layout():
                             " so you can make informed decisions.",
                         ],
                         className="subtitle",
-                        style={"marginTop": "10px"},
+                        style={"marginTop": "12px"},
                     ),
-                    html.Div(style={"height": "18px"}),
+                    html.Div(style={"height": "22px"}),
                     html.Div(
                         "Under Construction",
                         style={
-                            "fontSize": "14px",
+                            "fontSize": "13px",
                             "opacity": 0.75,
-                            "letterSpacing": "1px",
+                            "letterSpacing": "2px",
                         },
                     ),
                 ],
@@ -2320,6 +2330,7 @@ if MAINTENANCE:
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8050)
+
 
 
 
