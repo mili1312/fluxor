@@ -1,6 +1,6 @@
 # app.py
 
-#toolbox
+# toolbox
 import os
 import json
 import time
@@ -12,18 +12,12 @@ import ccxt
 import pandas as pd
 import numpy as np
 
-
-MAINTENANCE = os.getenv("MAINTENANCE_MODE", "1") == "1"
-#authentication (login/register)
-#favorites ανά χρήστη (από DB)
-#διαγράμματα Plotly (πιθανότατα price/indicators/σήματα)
-#ένα ML κομμάτι (Logistic Regression pipeline με scaling + calibration) για προβλέψεις/σήματα
 from dash import Dash, dcc, html, Input, Output, State, no_update, ctx, ALL
-
 from dash.exceptions import PreventUpdate
-from db import list_favorites, add_favorite, remove_favorite
 
+from db import list_favorites, add_favorite, remove_favorite
 from auth_ui import login_card, register_card, auth_shell, register_auth_callbacks
+
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -32,15 +26,10 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.pipeline import make_pipeline
 
-#το control panel της εφαρμογής:
-#πόσο συχνά ανανεώνεται το UI
-#πόσο συχνά τραβάς δεδομένα αγορών
-#πόσα δεδομένα κρατάς στη μνήμη
-#πώς δουλεύει το favorites engine
-#πώς συμπεριφέρεται η στρατηγική & το ML
-#πώς γίνεται το backtesting
-#τι αποθηκεύεται σε cache / αρχεία
 
+MAINTENANCE = os.getenv("MAINTENANCE_MODE", "1") == "1"
+
+# Control panel
 UI_REFRESH_MS = 1200
 TICKERS_REFRESH_MS = 12000
 
@@ -64,10 +53,10 @@ STRAT_PROX_PCT = 0.40  # %
 BT_LEVERAGE = 4
 
 BT_TP_PNL = 0.15                           # +15% PnL
-BT_TP_PRICE_MOVE = BT_TP_PNL / BT_LEVERAGE # underlying price move (+3.75%)
+BT_TP_PRICE_MOVE = BT_TP_PNL / BT_LEVERAGE # underlying move (+3.75%)
 
-BT_SL_PNL = -0.10                          # -4% PnL
-BT_SL_PRICE_MOVE = abs(BT_SL_PNL) / BT_LEVERAGE # underlying price move (-1.00%)
+BT_SL_PNL = -0.10                          # -10% PnL
+BT_SL_PRICE_MOVE = abs(BT_SL_PNL) / BT_LEVERAGE # underlying move (-2.50%)
 
 BT_MAX_TRADES_TO_DRAW = 80
 BT_CACHE: Dict[Tuple[str, str, str, int], dict] = {}  # (symbol, tf, mode, lim) -> {"trades":[...], "n":..., "buys":[...]}
@@ -75,16 +64,15 @@ BT_CACHE: Dict[Tuple[str, str, str, int], dict] = {}  # (symbol, tf, mode, lim) 
 FAV_POS_FILE = ".fav_positions.json"
 
 
-# Exchange
 # Exchange (do NOT init in maintenance)
 exchange = None
 if not MAINTENANCE:
     exchange = ccxt.binance({"enableRateLimit": True})
 
 
-
-# χάρτη από crypto symbol → ονόματα νομισμάτων, χρησιμοποιώντας το CoinGecko API, με τοπικό caching για απόδοση και σταθερότητα
-
+# --------------------------
+# CoinGecko symbol->names cache
+# --------------------------
 def load_coingecko_symbol_to_names() -> Dict[str, List[str]]:
     now = time.time()
     if os.path.exists(COINGECKO_CACHE_FILE):
@@ -124,7 +112,6 @@ def load_coingecko_symbol_to_names() -> Dict[str, List[str]]:
 
 COINGECKO_SYMBOL_TO_NAMES = load_coingecko_symbol_to_names()
 
-#μεταφράζει ένα symbol σε καλό, σταθερό display name για τον χρήστη
 
 def pick_display_name(symbol: str) -> str:
     majors = {
@@ -148,9 +135,9 @@ def pick_display_name(symbol: str) -> str:
     return sorted(names, key=lambda x: (len(x), x.lower()))[0]
 
 
-
-# όλα τα διαθέσιμα markets από το exchange (μέσω ccxt) και τα μετατρέπει σε δομές δεδομένων που είναι εύχρηστες για το UI
-
+# --------------------------
+# Markets / Base options
+# --------------------------
 def load_markets_assets() -> Tuple[dict, Set[str], Dict[str, Set[str]]]:
     if MAINTENANCE or exchange is None:
         return {}, set(), {}
@@ -173,19 +160,10 @@ def load_markets_assets() -> Tuple[dict, Set[str], Dict[str, Set[str]]]:
     return markets, base_assets, base_to_quotes
 
 
-MARKETS, BASE_ASSETS, BASE_TO_QUOTES = {}, set(), {}
-BASE_OPTIONS = []
-
-if not MAINTENANCE:
-    MARKETS, BASE_ASSETS, BASE_TO_QUOTES = load_markets_assets()
-    BASE_OPTIONS = build_base_options()
-
-
-#μετατρέπει τα raw market δεδομένα σε έτοιμες επιλογές UI
-
-def build_base_options() -> List[dict]:
+# FIX #1: define build_base_options BEFORE using it
+def build_base_options(base_assets: Set[str]) -> List[dict]:
     out = []
-    for base in sorted(BASE_ASSETS):
+    for base in sorted(base_assets):
         names = COINGECKO_SYMBOL_TO_NAMES.get(base, [])
         primary = pick_display_name(base)
         label = f"{primary} ({base})" if primary != base else base
@@ -194,21 +172,27 @@ def build_base_options() -> List[dict]:
     return out
 
 
+MARKETS, BASE_ASSETS, BASE_TO_QUOTES = {}, set(), {}
+BASE_OPTIONS: List[dict] = []
 
-DEFAULT_BASE = "BTC" if "BTC" in BASE_TO_QUOTES else BASE_OPTIONS[0]["value"]
-DEFAULT_QUOTE = "USDT" if "USDT" in BASE_TO_QUOTES.get(DEFAULT_BASE, set()) else sorted(list(BASE_TO_QUOTES[DEFAULT_BASE]))[0]
+if not MAINTENANCE:
+    MARKETS, BASE_ASSETS, BASE_TO_QUOTES = load_markets_assets()
+    BASE_OPTIONS = build_base_options(BASE_ASSETS)
+
+DEFAULT_BASE = "BTC" if "BTC" in BASE_TO_QUOTES else (BASE_OPTIONS[0]["value"] if BASE_OPTIONS else "BTC")
+DEFAULT_QUOTE = "USDT" if "USDT" in BASE_TO_QUOTES.get(DEFAULT_BASE, set()) else (
+    sorted(list(BASE_TO_QUOTES.get(DEFAULT_BASE, {"USDT"})))[0]
+)
 
 
+# --------------------------
 # Indicators + ML features
-
-# εκθετικό κινητό μέσο όρο (EMA)
-
+# --------------------------
 def add_ema(df: pd.DataFrame, period: int) -> pd.DataFrame:
     df[f"EMA_{period}"] = df["close"].ewm(span=period, adjust=False).mean()
     return df
 
 
-#υπολογίζει και προσθέτει τον MACD  δείκτη στα δεδομένα τιμών.
 def add_macd(df: pd.DataFrame) -> pd.DataFrame:
     fast, slow, signal = 12, 26, 9
     ema_fast = df["close"].ewm(span=fast, adjust=False).mean()
@@ -218,7 +202,6 @@ def add_macd(df: pd.DataFrame) -> pd.DataFrame:
     df["MACD_HIST"] = df["MACD"] - df["MACD_SIGNAL"]
     return df
 
-#υπολογίζει και προσθέτει τον RSI δείκτη στα δεδομένα τιμών
 
 def add_rsi(df: pd.DataFrame, length: int = 14) -> pd.DataFrame:
     out = df.copy()
@@ -233,7 +216,6 @@ def add_rsi(df: pd.DataFrame, length: int = 14) -> pd.DataFrame:
     out["rsi"] = 100 - (100 / (1 + rs))
     return out
 
-#υπολογίζει και προσθέτει τον ATR δείκτη στα δεδομένα τιμών
 
 def add_atr(df: pd.DataFrame, length: int = 14) -> pd.DataFrame:
     out = df.copy()
@@ -250,7 +232,6 @@ def add_atr(df: pd.DataFrame, length: int = 14) -> pd.DataFrame:
     out["atr"] = tr.ewm(alpha=1 / length, adjust=False).mean()
     return out
 
-#υπολογίζει Fibonacci retracement levels για ένα market, βασισμένη σε πρόσφατα δεδομένα τιμών
 
 def fib_levels(df: pd.DataFrame, lookback: int = 200) -> Dict[str, float]:
     w = df.tail(lookback)
@@ -259,7 +240,6 @@ def fib_levels(df: pd.DataFrame, lookback: int = 200) -> Dict[str, float]:
     rng = hi - lo
     if rng <= 0:
         return {"0": lo, "0.382": lo, "0.5": lo, "0.618": lo, "1": hi}
-
     return {
         "0": lo,
         "0.382": hi - 0.382 * rng,
@@ -268,7 +248,6 @@ def fib_levels(df: pd.DataFrame, lookback: int = 200) -> Dict[str, float]:
         "1": hi,
     }
 
-#μετατρέπει τιμές αγοράς σε δεδομένα που μπορεί να καταλάβει ένα μοντέλο: ο εγκέφαλος
 
 def make_features(df: pd.DataFrame, rsi_len=14, lookback=200, prox_pct=0.40):
     out = df.copy()
@@ -291,16 +270,14 @@ def make_features(df: pd.DataFrame, rsi_len=14, lookback=200, prox_pct=0.40):
     out["vol_10"] = out["ret"].rolling(10).std()
     out["atr_norm"] = out["atr"] / out["close"]
 
-    # NOTE: fib levels computed on the last lookback window (static), same logic used before
     lvls = fib_levels(out, lookback=lookback)
     fib_vals = np.array(list(lvls.values()), dtype=float)
-
     prices = out["close"].values.reshape(-1, 1)
     denom = np.maximum(prices, 1e-9)
+
     out["fib_rel_dist"] = np.min(np.abs(prices - fib_vals.reshape(1, -1)) / denom, axis=1)
     out["near_fib"] = (out["fib_rel_dist"] <= (prox_pct / 100.0)).astype(int)
 
-    # label: next candle up
     out["y"] = (out["ret"].shift(-1) > 0).astype(int)
 
     feature_cols = [
@@ -317,8 +294,6 @@ def make_features(df: pd.DataFrame, rsi_len=14, lookback=200, prox_pct=0.40):
     return out, feature_cols
 
 
-#εκπαιδεύει ένα πιθανοτικό μοντέλο πρόβλεψης κατεύθυνσης τιμής
-
 def fit_prob_model(df: pd.DataFrame, feature_cols, C=1.0):
     base = make_pipeline(
         StandardScaler(),
@@ -329,14 +304,8 @@ def fit_prob_model(df: pd.DataFrame, feature_cols, C=1.0):
     model.fit(X, y)
     return model
 
-#παίρνει ένα DataFrame τιμών και επιστρέφει μια λίστα από timestamps/τιμές όπου,
-#στο παρελθόν, όλα τα conditions της στρατηγικής (indicators + πιθανότητα ML) ήταν “BUY”
 
 def compute_buy_candidates(df: pd.DataFrame) -> List[dict]:
-    """
-    Επιστρέφει "πιθανές ειδοποιήσεις BUY" ιστορικά (όταν όλα τα conditions περνάνε).
-    Είναι fast: υπολογίζει features + (αν μπορεί) ένα ML prob series και μετά κάνει boolean mask.
-    """
     if df is None or df.empty or len(df) < 260:
         return []
 
@@ -350,7 +319,6 @@ def compute_buy_candidates(df: pd.DataFrame) -> List[dict]:
         except Exception:
             model = None
 
-    # prob series (default 0.5)
     feat_now, _ = make_features(df, rsi_len=14, lookback=200, prox_pct=STRAT_PROX_PCT)
     feat_now = feat_now.dropna().copy()
     feat_now["prob_up"] = 0.5
@@ -362,7 +330,6 @@ def compute_buy_candidates(df: pd.DataFrame) -> List[dict]:
         except Exception:
             pass
 
-    # conditions (ίδιο πνεύμα με compute_last_signal)
     trend_up = feat_now["EMA_50"] > feat_now["EMA_200"]
     rsi_ok = feat_now["rsi"] < 50
     near_ok = feat_now["near_fib"] == 1
@@ -373,21 +340,13 @@ def compute_buy_candidates(df: pd.DataFrame) -> List[dict]:
 
     buys = []
     for _, r in feat_now.loc[mask].iterrows():
-        buys.append(
-            {
-                "ts": r["ts"],
-                "price": float(r["close"]),
-                "prob_up": float(r["prob_up"]),
-            }
-        )
-    # keep not too many for UI
-    buys = buys[-300:]
-    return buys
+        buys.append({"ts": r["ts"], "price": float(r["close"]), "prob_up": float(r["prob_up"])})
+    return buys[-300:]
 
 
-
-# Backtest 
-
+# --------------------------
+# Backtest
+# --------------------------
 def backtest_buy_tp_sl_only(
     df: pd.DataFrame,
     prob_thr: float,
@@ -430,12 +389,12 @@ def backtest_buy_tp_sl_only(
         except Exception:
             prob_series = {}
 
-    # For speed: compute all needed indicator columns once
     w = df.copy()
     w = add_rsi(w, rsi_len)
     w = add_ema(w, 50)
     w = add_ema(w, 200)
     w = add_macd(w)
+
     lvls = fib_levels(w, lookback=lookback)
     fib_vals = np.array(list(lvls.values()), dtype=float)
     prices = w["close"].values.reshape(-1, 1)
@@ -478,7 +437,6 @@ def backtest_buy_tp_sl_only(
             hit_tp = (tp_price is not None and hi >= tp_price)
             hit_sl = (sl_price is not None and lo <= sl_price)
 
-            # if both hit same candle, choose worst-case -> SL first (conservative)
             if hit_sl:
                 exit_i = i
                 exit_price = float(sl_price)
@@ -527,9 +485,9 @@ def backtest_buy_tp_sl_only(
     return trades
 
 
-
+# --------------------------
 # Formatting
-
+# --------------------------
 def format_price(p: float) -> str:
     try:
         if p != p:
@@ -544,36 +502,38 @@ def format_price(p: float) -> str:
         return f"{p:,.6f}"
     return f"{p:.8f}"
 
-#helper μορφοποίησης ποσοστών
 
 def pct_str(x: float) -> str:
     sign = "+" if x >= 0 else ""
     return f"{sign}{x:.2f}%"
 
-# Polling live state 
 
+# --------------------------
+# Live state / caches
+# --------------------------
 LIVE_LOCK = threading.Lock()
 LIVE_DF: Optional[pd.DataFrame] = None
-LIVE_LAST_POLL: Dict[Tuple[str, str], float] = {}  # (symbol, tf) -> time.time()
-LIVE_POLL_MIN_SEC = 2.0  # don't hammer REST
-
+LIVE_LAST_POLL: Dict[Tuple[str, str], float] = {}
+LIVE_POLL_MIN_SEC = 2.0
 
 SHAPES_MEM: Dict[str, List[dict]] = {}
 HIST_CACHE: Dict[Tuple[str, str, str, int], pd.DataFrame] = {}
 
-#πρόσφατα ιστορικά δεδομένα τιμών για ένα συγκεκριμένο market από το exchange 
-#και τα μετατρέπει σε καθαρό pandas DataFrame
 
 def fetch_recent_history(symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
+    # FIX guard: maintenance or no exchange
+    if MAINTENANCE or exchange is None:
+        return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume"])
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
     df = pd.DataFrame(ohlcv, columns=["ts", "open", "high", "low", "close", "volume"])
     df["ts"] = pd.to_datetime(df["ts"], unit="ms", utc=True).dt.tz_convert(None)
     return df
 
-#προσπαθεί να φορτώσει όσο το δυνατόν περισσότερο ιστορικό OHLCV για ένα σύμβολο 
-#και timeframe από το exchange, με σελιδοποίηση
 
 def fetch_max_available_history(symbol: str, timeframe: str, max_bars: int) -> pd.DataFrame:
+    if MAINTENANCE or exchange is None:
+        return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume"])
+
     tf_map = {
         "1m": 60_000,
         "5m": 5 * 60_000,
@@ -612,10 +572,10 @@ def fetch_max_available_history(symbol: str, timeframe: str, max_bars: int) -> p
     df = df.drop_duplicates(subset=["ts"]).sort_values("ts").reset_index(drop=True)
     return df
 
-#24ωρα στατιστικά μεταβολής τιμών από το exchange 
-#και επιστρέφει μια καθαρή λίστα αγορών που μπορούν να χρησιμοποιηθούν για top movers
 
 def fetch_tickers_24h() -> List[dict]:
+    if MAINTENANCE or exchange is None:
+        return []
     try:
         tickers = exchange.fetch_tickers()
     except Exception:
@@ -642,19 +602,16 @@ def fetch_tickers_24h() -> List[dict]:
     return rows
 
 
-
-# Favorites background engine (signals/messages) + persistence
-
+# --------------------------
+# Favorites background engine
+# --------------------------
 FAV_LOCK = threading.Lock()
-FAV_WORKERS: Dict[str, dict] = {}   # pair -> {"stop": Event, "thread": Thread}
-FAV_SIGNALS: Dict[str, dict] = {}   # pair -> latest signal dict
-FAV_MODELS: Dict[str, dict] = {}    # pair -> {"model":..., "feats":..., "last_fit":...}
+FAV_WORKERS: Dict[str, dict] = {}
+FAV_SIGNALS: Dict[str, dict] = {}
+FAV_MODELS: Dict[str, dict] = {}
 
-# ONE POSITION AT A TIME state
-FAV_POS: Dict[str, dict] = {}       # pair -> {"in_pos": bool, "entry": float, "tp": float, "sl": float, "entry_time": str}
+FAV_POS: Dict[str, dict] = {}
 
-#φορτώνει από αρχείο την κατάσταση των favorite positions 
-#και τη φέρνει στη μνήμη της εφαρμογής, ώστε να επιβιώνει ένα restart
 
 def load_fav_pos():
     global FAV_POS
@@ -668,8 +625,6 @@ def load_fav_pos():
         pass
 
 
-#persist / restore mechanism για τα favorite positions
-
 def save_fav_pos():
     try:
         with open(FAV_POS_FILE, "w", encoding="utf-8") as f:
@@ -680,15 +635,21 @@ def save_fav_pos():
 
 load_fav_pos()
 
-#background worker  για κάθε αγαπημένο pair 
-#και κάνει live παρακολούθηση + ML retraining + σήματα + διαχείριση μιας θέσης (TP/SL)
 
 def fav_worker_loop(pair: str):
+    # FIX guard
+    if MAINTENANCE or exchange is None:
+        return
+
     tf = FAV_TF
     limit = FAV_LIMIT
 
+    # FIX #3: safe get to avoid KeyError
     with FAV_LOCK:
-        stop_event = FAV_WORKERS[pair]["stop"]
+        w = FAV_WORKERS.get(pair)
+        if not w:
+            return
+        stop_event = w["stop"]
 
     while not stop_event.is_set():
         try:
@@ -700,7 +661,6 @@ def fav_worker_loop(pair: str):
 
             now = time.time()
 
-            # train periodically
             with FAV_LOCK:
                 bundle = FAV_MODELS.get(pair)
 
@@ -733,20 +693,20 @@ def fav_worker_loop(pair: str):
                     X_last = feat_now[feats].iloc[[-1]].values
                     prob_up = float(model.predict_proba(X_last)[:, 1][0])
 
-            # last candle conditions (same as chart logic)
-            w = df.copy()
-            w = add_rsi(w, 14)
-            w = add_ema(w, 50)
-            w = add_ema(w, 200)
-            w = add_macd(w)
-            lvls = fib_levels(w, lookback=200)
+            wdf = df.copy()
+            wdf = add_rsi(wdf, 14)
+            wdf = add_ema(wdf, 50)
+            wdf = add_ema(wdf, 200)
+            wdf = add_macd(wdf)
+
+            lvls = fib_levels(wdf, lookback=200)
             fib_vals = np.array(list(lvls.values()), dtype=float)
-            prices = w["close"].values.reshape(-1, 1)
+            prices = wdf["close"].values.reshape(-1, 1)
             denom = np.maximum(prices, 1e-9)
             fib_rel = np.min(np.abs(prices - fib_vals.reshape(1, -1)) / denom, axis=1)
             near_fib = fib_rel <= (STRAT_PROX_PCT / 100.0)
 
-            last = w.iloc[-1]
+            last = wdf.iloc[-1]
             ts = last["ts"]
             price = float(last["close"])
 
@@ -758,50 +718,54 @@ def fav_worker_loop(pair: str):
 
             signal = "BUY" if (trend_up and rsi_ok and near_ok and macd_ok and (p > PROB_THR)) else ""
 
-            # --- ONE POSITION AT A TIME (favorites) + TP/SL ---
             with FAV_LOCK:
                 pos = FAV_POS.get(pair, {"in_pos": False})
+
+            # ISO time helps sorting
+            ts_iso = pd.to_datetime(ts).isoformat()
 
             if pos.get("in_pos"):
                 tp = float(pos.get("tp", 0) or 0)
                 sl = float(pos.get("sl", 0) or 0)
-                hi = float(w["high"].iloc[-1])
-                lo = float(w["low"].iloc[-1])
+                hi = float(wdf["high"].iloc[-1])
+                lo = float(wdf["low"].iloc[-1])
 
-                # Conservative: if both hit same candle -> SL first
                 if sl > 0 and lo <= sl:
-                    item = {"pair": pair, "time": str(ts), "signal": "SL", "price": float(sl), "prob_up": prob_up}
+                    item = {"pair": pair, "time": ts_iso, "signal": "SL", "price": float(sl), "prob_up": prob_up}
                     with FAV_LOCK:
                         FAV_SIGNALS[pair] = item
                         FAV_POS[pair] = {"in_pos": False}
                         save_fav_pos()
                 elif tp > 0 and hi >= tp:
-                    item = {"pair": pair, "time": str(ts), "signal": "TP", "price": float(tp), "prob_up": prob_up}
+                    item = {"pair": pair, "time": ts_iso, "signal": "TP", "price": float(tp), "prob_up": prob_up}
                     with FAV_LOCK:
                         FAV_SIGNALS[pair] = item
                         FAV_POS[pair] = {"in_pos": False}
                         save_fav_pos()
-                # while IN -> no new BUY
             else:
                 if signal == "BUY":
                     entry = float(price)
                     tp = entry * (1.0 + (BT_TP_PNL / BT_LEVERAGE))
                     sl = entry * (1.0 - (abs(BT_SL_PNL) / BT_LEVERAGE))
-                    item = {"pair": pair, "time": str(ts), "signal": "BUY", "price": entry, "prob_up": prob_up}
+                    item = {"pair": pair, "time": ts_iso, "signal": "BUY", "price": entry, "prob_up": prob_up}
                     with FAV_LOCK:
                         FAV_SIGNALS[pair] = item
-                        FAV_POS[pair] = {"in_pos": True, "entry": entry, "tp": tp, "sl": sl, "entry_time": str(ts)}
+                        FAV_POS[pair] = {"in_pos": True, "entry": entry, "tp": tp, "sl": sl, "entry_time": ts_iso}
                         save_fav_pos()
 
         except Exception as e:
             with FAV_LOCK:
-                FAV_SIGNALS[pair] = {"pair": pair, "time": "", "signal": "ERROR", "price": None, "prob_up": None, "err": str(e)}
+                FAV_SIGNALS[pair] = {
+                    "pair": pair, "time": "", "signal": "ERROR",
+                    "price": None, "prob_up": None, "err": str(e)
+                }
         time.sleep(FAV_POLL_SEC)
 
 
-#ξεκινάει έναν background worker για ένα αγαπημένο ζεύγος
-
 def start_fav_worker(pair: str):
+    # FIX guard
+    if MAINTENANCE or exchange is None:
+        return
     pair = pair.upper()
     with FAV_LOCK:
         if pair in FAV_WORKERS:
@@ -811,8 +775,6 @@ def start_fav_worker(pair: str):
         FAV_WORKERS[pair] = {"stop": ev, "thread": th}
         th.start()
 
-
-#σταματάει τον background worker για ένα αγαπημένο ζεύγος
 
 def stop_fav_worker(pair: str):
     pair = pair.upper()
@@ -824,20 +786,15 @@ def stop_fav_worker(pair: str):
         del FAV_WORKERS[pair]
         FAV_MODELS.pop(pair, None)
         FAV_SIGNALS.pop(pair, None)
-        # keep FAV_POS (persistence) unless you want to clear it:
-        # FAV_POS.pop(pair, None)
         save_fav_pos()
 
 
-
-# UI helpers
-
+# --------------------------
+# UI helpers / app init
+# --------------------------
 app = Dash(__name__, suppress_callback_exceptions=True)
 server = app.server
 app.title = "Fluxor"
-
-#Όσο MAINTENANCE_MODE=1, θα δείχνει μόνο αυτή τη σελίδα.
-
 
 
 def under_construction_layout():
@@ -866,10 +823,8 @@ def under_construction_layout():
         ],
     )
 
-if MAINTENANCE:
-    app.layout = under_construction_layout()
-else:
 
+# FIX #2: do NOT leave an empty else; app.index_string is safe to set always
 app.index_string = """
 <!DOCTYPE html>
 <html>
@@ -896,7 +851,6 @@ app.index_string = """
       ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 10px; }
       ::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
 
-    /* Smooth entrance animation (auth) */
     @keyframes popIn {
       0%   { opacity: 0; transform: translateY(10px) scale(0.98); }
       100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -905,7 +859,7 @@ app.index_string = """
       0%   { opacity: 0; transform: translateY(-6px) scale(0.96); filter: blur(1px); }
       100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0px); }
     }
-/* --- Animated bubbles background (auth) --- */
+
 @keyframes floatUp {
   0%   { transform: translateY(0) translateX(0); opacity: 0; }
   10%  { opacity: 0.35; }
@@ -917,7 +871,7 @@ app.index_string = """
   inset: 0;
   overflow: hidden;
   z-index: 0;
-  pointer-events: none; /* important: don't block clicks */
+  pointer-events: none;
 }
 
 .bubble {
@@ -937,56 +891,24 @@ app.index_string = """
   will-change: transform, opacity;
 }
 
-
-/* -------------------------
-   Mobile responsive tweaks
--------------------------- */
 @media (max-width: 900px) {
-  /* 전체 padding μικρότερο */
-  .app-wrap {
-    padding: 10px !important;
-  }
-
-  /* από row -> column */
-  .app-row {
-    flex-direction: column !important;
-  }
-
-  /* sidebar full width + όχι sticky */
-  .sidebar {
-    width: 100% !important;
-    position: relative !important;
-    top: auto !important;
-  }
-
-  /* main full width */
-  .main {
-    width: 100% !important;
-    min-width: 0 !important;
-  }
-
-  /* graphs πιο σωστά ύψη σε κινητό */
+  .app-wrap { padding: 10px !important; }
+  .app-row { flex-direction: column !important; }
+  .sidebar { width: 100% !important; position: relative !important; top: auto !important; }
+  .main { width: 100% !important; min-width: 0 !important; }
   .graph-lg { height: 48vh !important; }
   .graph-md { height: 30vh !important; }
   .graph-sm { height: 30vh !important; }
-
-  /* movers grid από 3 -> 2 */
-  .movers-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
+  .movers-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 
 @media (max-width: 520px) {
   .graph-lg { height: 44vh !important; }
   .graph-md { height: 28vh !important; }
   .graph-sm { height: 28vh !important; }
-
-  /* movers grid από 2 -> 1 */
-  .movers-grid {
-    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
-  }
+  .movers-grid { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
 }
-/* --- Global safety --- */
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -995,70 +917,31 @@ html, body {
   overflow-x: hidden;
 }
 
-/* Plotly sometimes overflows in flex containers */
 .js-plotly-plot, .plot-container, .svg-container {
   max-width: 100% !important;
 }
 
-/* ========= Mobile UX: sidebar becomes panel + charts in tabs ========= */
 @media (max-width: 900px) {
-
   .app-wrap { padding: 10px !important; }
-
-  /* Make layout single column on mobile */
-  .app-row {
-    flex-direction: column !important;
-    flex-wrap: nowrap !important;
-    min-width: 0 !important;
-  }
-
-  .sidebar {
-    width: 100% !important;
-    max-width: 100% !important;
-    position: relative !important;
-    top: auto !important;
-    padding: 12px !important;
-  }
-
-  .main {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    overflow: hidden !important;
-  }
-
-  /* Mobile charts sizing */
+  .app-row { flex-direction: column !important; flex-wrap: nowrap !important; min-width: 0 !important; }
+  .sidebar { width: 100% !important; max-width: 100% !important; position: relative !important; top: auto !important; padding: 12px !important; }
+  .main { width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow: hidden !important; }
   .graph-lg { height: 46vh !important; }
   .graph-md { height: 34vh !important; }
   .graph-sm { height: 34vh !important; }
-
-  /* Movers grid smaller */
-    .movers-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
-  /* Hide sidebar by default (we will toggle it) */
-    .sidebar-collapsed {
-    display: none !important;
+  .movers-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .sidebar-collapsed { display: none !important; }
+  .mobile-topbar { display: flex !important; }
 }
 
-  /* Mobile topbar */
-    .mobile-topbar {
-    display: flex !important;
-}
-}
-
-/* very small phones */
 @media (max-width: 520px) {
-.movers-grid { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
-.graph-lg { height: 44vh !important; }
-.graph-md { height: 32vh !important; }
-.graph-sm { height: 32vh !important; }
+  .movers-grid { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+  .graph-lg { height: 44vh !important; }
+  .graph-md { height: 32vh !important; }
+  .graph-sm { height: 32vh !important; }
 }
 
-/* Default desktop: show topbar button row hidden */
 .mobile-topbar { display: none; }
-
 
 </style>
 </head>
@@ -1071,7 +954,6 @@ html, body {
 </html>
 """
 
-#έτοιμο dark theme layout για τα γραφήματα (Plotly)
 
 def dark_layout(title: str, uirev: str):
     return dict(
@@ -1086,8 +968,6 @@ def dark_layout(title: str, uirev: str):
         margin=dict(l=52, r=18, t=55, b=35),
     )
 
-
-#γράφημα–μήνυμα αντί για κανονικό chart
 
 def message_figure(title: str, message: str, uirev: str):
     fig = go.Figure()
@@ -1104,8 +984,6 @@ def message_figure(title: str, message: str, uirev: str):
     fig.update_yaxes(visible=False)
     return fig
 
-
-#ένα κουμπί market card για τα top movers ή τα favorites
 
 def mover_btn(sym: str, last: Optional[float], pct: Optional[float], btn_id: dict, badge_text: Optional[str] = None):
     pct_val = 0.0 if pct is None else float(pct)
@@ -1157,8 +1035,6 @@ def mover_btn(sym: str, last: Optional[float], pct: Optional[float], btn_id: dic
     )
 
 
-#μετατρέπει ένα σήμα (BUY, TP, SL κλπ) σε κείμενο + χρώματα για το UI
-
 def sig_style_and_badge(sig: str):
     sig = (sig or "").upper()
     if sig == "BUY":
@@ -1178,9 +1054,9 @@ def sig_style_and_badge(sig: str):
     return ("", None, None)
 
 
-
-# Layout
-
+# --------------------------
+# Layout (Dashboard)
+# --------------------------
 main_dashboard_layout = html.Div(
     className="app-wrap",
     style={
@@ -1194,16 +1070,15 @@ main_dashboard_layout = html.Div(
         dcc.Interval(id="ui_interval", interval=UI_REFRESH_MS, n_intervals=0),
         dcc.Interval(id="tickers_interval", interval=TICKERS_REFRESH_MS, n_intervals=0),
         dcc.Interval(id="signals_interval", interval=1500, n_intervals=0),
-dcc.Store(id="ui_mobile", data={"sidebar_open": True, "tab": "tab_price"}),
 
+        dcc.Store(id="ui_mobile", data={"sidebar_open": True, "tab": "tab_price"}),
         dcc.Store(id="shape_store", data={"symbol": "", "shapes": []}),
-dcc.Store(id="movers_store", data={"rows": []}),
+        dcc.Store(id="movers_store", data={"rows": []}),
         dcc.Store(id="pair_pick_store", data={"pair": None}),
-html.Div(
+
+        html.Div(
             className="app-row",
-            style={"display": "flex", "gap": "12px", "alignItems": "flex-start", "flexWrap": "wrap",
-"minWidth": 0,
-},
+            style={"display": "flex", "gap": "12px", "alignItems": "flex-start", "flexWrap": "wrap", "minWidth": 0},
             children=[
                 # Sidebar
                 html.Div(
@@ -1219,7 +1094,6 @@ html.Div(
                         "top": "12px",
                         "backdropFilter": "blur(10px)",
                         "boxSizing": "border-box",
-
                     },
                     children=[
                         html.Div("Επιλογές", style={"fontSize": "16px", "fontWeight": 900}),
@@ -1395,29 +1269,29 @@ html.Div(
                 # Main
                 html.Div(
                     className="main",
-                    style={"flex": "1", "minWidth": 0,"maxWidth": "100%","overflow": "hidden",},
+                    style={"flex": "1", "minWidth": 0, "maxWidth": "100%", "overflow": "hidden"},
                     children=[
                         html.Div(
-    style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "10px"},
-    children=[
-        html.Div("Crypto Dashboard", style={"fontSize": "22px", "fontWeight": 900}),
-        html.Button(
-            "Logout",
-            id="btn_logout",
-            n_clicks=0,
-            style={
-                "padding": "10px 12px",
-                "borderRadius": "12px",
-                "border": "1px solid rgba(255,255,255,0.14)",
-                "backgroundColor": "rgba(7,11,20,0.85)",
-                "color": "#E6E6E6",
-                "cursor": "pointer",
-                "fontWeight": 900,
-                "fontSize": "12px",
-            },
-        ),
-    ],
-),
+                            style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "10px"},
+                            children=[
+                                html.Div("Crypto Dashboard", style={"fontSize": "22px", "fontWeight": 900}),
+                                html.Button(
+                                    "Logout",
+                                    id="btn_logout",
+                                    n_clicks=0,
+                                    style={
+                                        "padding": "10px 12px",
+                                        "borderRadius": "12px",
+                                        "border": "1px solid rgba(255,255,255,0.14)",
+                                        "backgroundColor": "rgba(7,11,20,0.85)",
+                                        "color": "#E6E6E6",
+                                        "cursor": "pointer",
+                                        "fontWeight": 900,
+                                        "fontSize": "12px",
+                                    },
+                                ),
+                            ],
+                        ),
 
                         dcc.Graph(
                             id="price_chart",
@@ -1507,43 +1381,40 @@ html.Div(
     ],
 )
 
-# Top-level routing layout (Auth -> App)
 
+# --------------------------
+# Top-level routing (Auth -> App)
+# --------------------------
 app.layout = html.Div(
     children=[
         dcc.Store(id="session", data={"logged_in": False, "email": None}),
-        dcc.Store(id="view", data={"page": "login"}),  # login/register
+        dcc.Store(id="view", data={"page": "login"}),
         dcc.Store(id="watchlist_store", data={"pairs": []}),
         dcc.Store(id="watchlist_loaded", data=False),
         dcc.Store(id="signals_store", data={"items": []}),
-html.Div(id="page_container"),
+        html.Div(id="page_container"),
     ]
 )
 
-#Validation layout 
 app.validation_layout = html.Div(
     [
-        # base stores + container
         dcc.Store(id="session"),
         dcc.Store(id="view"),
-                dcc.Store(id="watchlist_store"),
+        dcc.Store(id="watchlist_store"),
         dcc.Store(id="signals_store"),
         dcc.Interval(id="watchlist_boot"),
         html.Div(id="watchlist_debug"),
-html.Div(id="page_container"),
-        # auth pages (so IDs like go_login/go_register exist for callback validation)
+        html.Div(id="page_container"),
         auth_shell(login_card()),
         auth_shell(register_card()),
-        # main app (so dashboard IDs exist too)
         main_dashboard_layout,
     ]
 )
 
 
-from dash.exceptions import PreventUpdate
-
-#callback watchlist
-
+# --------------------------
+# Callbacks
+# --------------------------
 @app.callback(
     Output("watchlist_store", "data", allow_duplicate=True),
     Output("watchlist_loaded", "data"),
@@ -1552,7 +1423,6 @@ from dash.exceptions import PreventUpdate
     State("watchlist_loaded", "data"),
     prevent_initial_call=True,
 )
-
 def load_watchlist_after_dashboard(_n, session, loaded):
     session = session or {}
     if not session.get("logged_in"):
@@ -1568,7 +1438,6 @@ def load_watchlist_after_dashboard(_n, session, loaded):
     pairs = list_favorites(email)
     return {"pairs": pairs[:120]}, True
 
-#callback reset_loaded_on_logout
 
 @app.callback(
     Output("watchlist_loaded", "data", allow_duplicate=True),
@@ -1581,8 +1450,6 @@ def reset_loaded_on_logout(session):
         return False
     raise PreventUpdate
 
-
-#callback route_pages
 
 @app.callback(
     Output("page_container", "children"),
@@ -1602,11 +1469,8 @@ def route_pages(session, view):
     return auth_shell(login_card())
 
 
-# Register auth callbacks 
 register_auth_callbacks(app)
 
-
-# Watchlist render (badge: RUN/ERROR/BUY/SELL/IN/TP/SL)
 
 @app.callback(
     Output("watchlist_view", "children"),
@@ -1709,9 +1573,6 @@ def render_watchlist(wstore, sstore):
     return rows
 
 
-
-# Movers store + render
-
 @app.callback(
     Output("movers_store", "data"),
     Input("tickers_interval", "n_intervals", allow_optional=True),
@@ -1740,9 +1601,6 @@ def render_movers(mstore, mode):
     return [mover_btn(r["symbol"], r["last"], r["pct"], {"type": "mover_pair", "pair": r["symbol"]}) for r in rows_sorted]
 
 
-
-# Watchlist controller (single writer, per-user via session email)
-
 @app.callback(
     Output("watchlist_store", "data"),
     Input("session", "data"),
@@ -1754,23 +1612,19 @@ def render_movers(mstore, mode):
     prevent_initial_call=True,
 )
 def watchlist_controller(session, n_add, n_remove_list, wstore, base, quote):
-    # όταν είσαι login page, αυτά μπορεί να είναι None επειδή δεν υπάρχουν στο DOM
     trig = ctx.triggered_id
 
     session = session or {}
     email = session.get("email")
     logged_in = bool(session.get("logged_in"))
 
-    # logout / not logged in => clear
     if not logged_in or not email:
         return {"pairs": []}
 
-    # login => load from DB
     if trig == "session":
         pairs = list_favorites(email)
         return {"pairs": pairs[:120]}
 
-    # αν το trigger δεν υπάρχει πραγματικά (π.χ. None), μην κάνεις τίποτα
     if not ctx.triggered or not ctx.triggered[0].get("value"):
         return no_update
 
@@ -1797,11 +1651,6 @@ def watchlist_controller(session, n_add, n_remove_list, wstore, base, quote):
     return no_update
 
 
-
-
-
-# Pair pick from clicks
-
 @app.callback(
     Output("pair_pick_store", "data"),
     Input({"type": "mover_pair", "pair": ALL}, "n_clicks", allow_optional=True),
@@ -1823,9 +1672,6 @@ def select_pair_from_lists(_, __):
         return no_update
     return {"pair": pair.upper()}
 
-
-
-# Search filter
 
 @app.callback(
     Output("base_asset", "options"),
@@ -1850,7 +1696,6 @@ def filter_base_options(search_value, current_base):
     return opts
 
 
-# Enter-to-pick
 @app.callback(
     Output("pair_pick_store", "data", allow_duplicate=True),
     Input("base_search", "n_submit", allow_optional=True),
@@ -1873,8 +1718,6 @@ def pick_from_search_enter(_n, text, current_quote):
     quote = (current_quote or "USDT").upper()
     return {"pair": f"{base}/{quote}".upper()}
 
-
-# UNIFIED callback
 
 @app.callback(
     Output("base_asset", "value"),
@@ -1914,9 +1757,6 @@ def unified_pair_and_quote(pair_store, base_value, current_quote):
     return base_value, opts, chosen
 
 
-
-# Favorites workers manager (start/stop based on watchlist)
-
 @app.callback(
     Output("signals_store", "data"),
     Input("watchlist_store", "data", allow_optional=True),
@@ -1939,9 +1779,6 @@ def manage_fav_workers(wstore, sstore):
     return sstore or {"items": []}
 
 
-
-# Signals store refresh + render
-
 @app.callback(
     Output("signals_store", "data", allow_duplicate=True),
     Input("signals_interval", "n_intervals", allow_optional=True),
@@ -1956,7 +1793,7 @@ def refresh_signals_store(_):
     items = sorted(items, key=lambda x: x.get("time", ""), reverse=True)[:50]
     return {"items": items}
 
-#πώς εμφανίζονται τα signals στην οθόνη
+
 @app.callback(
     Output("signals_view", "children"),
     Input("signals_store", "data", allow_optional=True),
@@ -2016,9 +1853,6 @@ def render_signals(sstore):
     return cards
 
 
-
-# Init/restart history (no websocket) AND load shapes (for selected pair)
-
 @app.callback(
     Output("shape_store", "data"),
     Input("base_asset", "value", allow_optional=True),
@@ -2064,9 +1898,6 @@ def init_or_restart(base, quote, timeframe, history_mode, limit):
         return {"symbol": symbol, "shapes": SHAPES_MEM.get(symbol, []), "error": str(e)}
 
 
-
-# Persist drawings + clear 
-
 @app.callback(
     Output("shape_store", "data", allow_duplicate=True),
     Input("price_chart", "relayoutData", allow_optional=True),
@@ -2101,10 +1932,6 @@ def clear_shapes(_, store):
     return store
 
 
-
-# Render charts + Backtest overlay (TP & SL lines + labels)
-# + Historical BUY candidates markers
-
 @app.callback(
     Output("price_chart", "figure"),
     Output("ema_chart", "figure"),
@@ -2122,6 +1949,7 @@ def clear_shapes(_, store):
 def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shape_store):
     if _ is None:
         raise PreventUpdate
+
     global LIVE_DF
 
     base = base or DEFAULT_BASE
@@ -2132,7 +1960,6 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
     mode = history_mode or "recent"
     lim = int(limit)
 
-    # Polling update (only for recent mode)
     if symbol in MARKETS and mode != "all":
         now = time.time()
         key = (symbol, timeframe)
@@ -2166,7 +1993,6 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
     last_price = float(df["close"].iloc[-1])
     title_main = f"{symbol} — {format_price(last_price)}"
 
-    # Cache key
     bt_key = (symbol, timeframe, mode, lim)
     if bt_key in BT_CACHE:
         trades = BT_CACHE[bt_key].get("trades", [])
@@ -2206,14 +2032,12 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
         row=2, col=1
     )
 
-    # Historical BUY candidates (small markers)
     if buy_candidates:
         bx = [b["ts"] for b in buy_candidates]
         by = [b["price"] for b in buy_candidates]
         fig_price.add_trace(
             go.Scatter(
-                x=bx,
-                y=by,
+                x=bx, y=by,
                 mode="markers",
                 name="BUY candidates (history)",
                 marker=dict(symbol="circle", size=5),
@@ -2223,7 +2047,6 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
             row=1, col=1
         )
 
-    # Trades overlay: entry + TP/SL hit + TP/SL horizontal lines + labels
     entry_x, entry_y = [], []
     tp_x, tp_y = [], []
     sl_x, sl_y = [], []
@@ -2247,17 +2070,9 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
             elif res == "SL":
                 sl_x.append(xj); sl_y.append(exitp)
 
-            # TP line
             if np.isfinite(tp):
                 fig_price.add_trace(
-                    go.Scatter(
-                        x=[xi, xj],
-                        y=[tp, tp],
-                        mode="lines",
-                        opacity=0.28,
-                        hoverinfo="skip",
-                        showlegend=False,
-                    ),
+                    go.Scatter(x=[xi, xj], y=[tp, tp], mode="lines", opacity=0.28, hoverinfo="skip", showlegend=False),
                     row=1, col=1
                 )
                 fig_price.add_annotation(
@@ -2269,17 +2084,9 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
                     borderwidth=1,
                 )
 
-            # SL line
             if np.isfinite(sl):
                 fig_price.add_trace(
-                    go.Scatter(
-                        x=[xi, xj],
-                        y=[sl, sl],
-                        mode="lines",
-                        opacity=0.22,
-                        hoverinfo="skip",
-                        showlegend=False,
-                    ),
+                    go.Scatter(x=[xi, xj], y=[sl, sl], mode="lines", opacity=0.22, hoverinfo="skip", showlegend=False),
                     row=1, col=1
                 )
                 fig_price.add_annotation(
@@ -2291,11 +2098,9 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
                     borderwidth=1,
                 )
 
-        # Entries
         fig_price.add_trace(
             go.Scatter(
-                x=entry_x,
-                y=entry_y,
+                x=entry_x, y=entry_y,
                 mode="markers",
                 name="BUY entries (trades)",
                 marker=dict(symbol="circle", size=9),
@@ -2304,12 +2109,10 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
             row=1, col=1
         )
 
-        # TP hits
         if tp_x:
             fig_price.add_trace(
                 go.Scatter(
-                    x=tp_x,
-                    y=tp_y,
+                    x=tp_x, y=tp_y,
                     mode="markers",
                     name=f"TP hit (+{int(BT_TP_PNL*100)}% @ {BT_LEVERAGE}x)",
                     marker=dict(symbol="triangle-down", size=10),
@@ -2318,12 +2121,10 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
                 row=1, col=1
             )
 
-        # SL hits
         if sl_x:
             fig_price.add_trace(
                 go.Scatter(
-                    x=sl_x,
-                    y=sl_y,
+                    x=sl_x, y=sl_y,
                     mode="markers",
                     name=f"SL hit ({int(BT_SL_PNL*100)}% @ {BT_LEVERAGE}x)",
                     marker=dict(symbol="x", size=10),
@@ -2339,14 +2140,12 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
     if shapes:
         fig_price.update_layout(shapes=shapes)
 
-    # EMA chart
     fig_ema = go.Figure()
     fig_ema.add_trace(go.Scatter(x=df["ts"], y=df["close"], name="Close", mode="lines"))
     fig_ema.add_trace(go.Scatter(x=df["ts"], y=df[f"EMA_{int(ema_period)}"], name=f"EMA {int(ema_period)}", mode="lines"))
     fig_ema.update_layout(**dark_layout(title_main, uirev))
     fig_ema.update_layout(dragmode="pan", hovermode="x unified")
 
-    # MACD chart
     fig_macd = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.60, 0.40])
     fig_macd.add_trace(go.Scatter(x=df["ts"], y=df["MACD"], name="MACD", mode="lines"), row=1, col=1)
     fig_macd.add_trace(go.Scatter(x=df["ts"], y=df["MACD_SIGNAL"], name="Signal", mode="lines"), row=1, col=1)
@@ -2374,9 +2173,9 @@ def render_live(_, base, quote, timeframe, history_mode, limit, ema_period, shap
     return fig_price, fig_ema, fig_macd, sidebar
 
 
-
+# --------------------------
 # Cleanup
-
+# --------------------------
 import atexit
 
 @atexit.register
@@ -2388,8 +2187,16 @@ def _cleanup():
     save_fav_pos()
 
 
+# IMPORTANT: if maintenance => force only under construction page
+if MAINTENANCE:
+    app.layout = under_construction_layout()
+    app.validation_layout = app.layout
+
+
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8050)
+
+
 
 
 
